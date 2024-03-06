@@ -1,0 +1,36 @@
+func (p {{.OutPut.LowerCamelCase}}) Create{{.Input.CamelCase}}(ctx context.Context ,{{.Input.LowerCamelCase}} *models.{{.Input.CamelCase}}) error {
+		tx, err := p.client.GetClient().Beginx()
+		if err != nil {
+			return err
+		}
+    defer tx.Rollback()
+		
+		if err := p.create{{.Input.CamelCase}}(ctx, tx, {{.Input.LowerCamelCase}}); err != nil {
+			return err
+		}
+	
+		return tx.Commit() 
+}
+
+func (p {{.OutPut.LowerCamelCase}}) create{{.Input.CamelCase}}(ctx context.Context, tx *sqlx.Tx ,{{.Input.LowerCamelCase}} *models.{{.Input.CamelCase}}) error {
+	sql := `INSERT INTO {{snackCase .Input.Name}} ({{range $i, $a := .Params}}{{if $i}}, {{end}} "{{$a}}" {{end}})
+	VALUES 
+	(
+		{{range $i, $a := .Params}}{{if $i}},
+		{{end}}${{add $i 1}}{{end}}
+	)
+	` 
+	stmt, err := tx.Preparex(sql)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	{{$name := .Input.LowerCamelCase}}
+	if _, err := stmt.ExecContext(
+		ctx,{{range .Params}}
+		{{$name}}.{{ camelCase .}},{{end}}
+	); err != nil {
+		return err
+	}
+	return nil
+}

@@ -1,0 +1,64 @@
+func (p {{.OutPut.LowerCamelCase}}) Fetch{{.Input.CamelCase}}s(ctx context.Context,args *sync.Map , paginator *helperModel.Paginator) ([]*models.{{.Input.CamelCase}},error) {
+		if args == nil {
+			args = new(sync.Map)
+		}
+		var conds []string
+		var valArgs []interface{}
+
+		var where string
+		if len(conds) > 0 {
+		where = "WHERE " + strings.Join(conds, " AND ")
+		}
+		var paginatorSql string
+		if paginator != nil {
+		var limit = int(paginator.PerPage)
+		var skipItem = (int(paginator.Page) - 1) * int(paginator.PerPage)
+		paginatorSql = fmt.Sprintf(`
+			LIMIT %d
+			OFFSET %d
+			`,
+			limit,
+			skipItem,
+		)
+	}
+	sql := fmt.Sprintf(`
+	SELECT
+		%s,
+		count(*) OVER() as total_row
+	FROM
+		{{snackCase .Input.Name}}
+	%s
+	%s	
+	` ,
+		orm.GetSelector(models.{{.Input.CamelCase}}{}),
+		where,
+		paginatorSql,
+	)
+	sql = sqlx.Rebind(sqlx.DOLLAR, sql)
+	stmt, err := p.client.GetClient().PreparexContext(ctx, sql)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+	rows, err := stmt.Queryx(valArgs...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return p.orm{{.Input.CamelCase}}(ctx, rows,paginator, orm.NewMapperOption())
+}
+
+func (p {{.OutPut.LowerCamelCase}}) orm{{.Input.CamelCase}}(ctx context.Context, rows *sqlx.Rows, paginator *helperModel.Paginator, option orm.MapperOption) ([]*models.{{.Input.CamelCase}},error) {
+    var mapper, err = orm.OrmContext(ctx, new(models.{{.Input.CamelCase}}), rows, option)
+    if err != nil {
+		  return nil, err
+	  }
+		if paginator != nil {
+			paginator.SetPaginatorByAllRows(mapper.GetPaginateTotal())
+		}
+	
+		return mapper.GetData().([]*models.{{.Input.CamelCase}}), nil
+	}
+
+

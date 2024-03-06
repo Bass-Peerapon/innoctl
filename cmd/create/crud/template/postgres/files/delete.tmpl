@@ -1,0 +1,36 @@
+func (p {{.OutPut.LowerCamelCase}}) Delete{{.Input.CamelCase}}(ctx context.Context,id *uuid.UUID) error {
+		tx, err := p.client.GetClient().Beginx()
+		if err != nil {
+			return err
+		}
+    defer tx.Rollback()
+		
+		if err := p.delete{{.Input.CamelCase}}(ctx, tx, id); err != nil {
+			return err
+		}
+	
+		return tx.Commit() 
+}
+
+func (p {{.OutPut.LowerCamelCase}}) delete{{.Input.CamelCase}}(ctx context.Context, tx *sqlx.Tx, id *uuid.UUID) error {
+	sql := `
+		DELETE FROM 
+			{{snackCase .Input.Name}}
+		WHERE
+			id = $1
+			
+	` 
+	stmt, err := tx.Preparex(sql)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	{{$name := .Input.LowerCamelCase}}
+	if _, err := stmt.ExecContext(
+		ctx,
+		id,
+	); err != nil {
+		return err
+	}
+	return nil
+}
