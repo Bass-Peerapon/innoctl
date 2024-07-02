@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/Bass-Peerapon/innoctl/cmd/create/crud"
+	"github.com/Bass-Peerapon/innoctl/cmd/create/dbmlstruct"
 	"github.com/Bass-Peerapon/innoctl/cmd/create/nwp"
 	"github.com/Bass-Peerapon/innoctl/cmd/create/service"
 	filepicker "github.com/Bass-Peerapon/innoctl/ui/file-picker"
@@ -14,6 +15,7 @@ import (
 	progressbar "github.com/Bass-Peerapon/innoctl/ui/progress-bar"
 	"github.com/Bass-Peerapon/innoctl/ui/selection"
 	"github.com/Bass-Peerapon/innoctl/ui/textinput"
+	"github.com/Bass-Peerapon/innoctl/ui/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -192,6 +194,17 @@ func CreateCrud() {
 	}
 }
 
+func CreateDbml2struct() {
+	dbmlView := viewport.InitModel()
+
+	p := tea.NewProgram(dbmlView, tea.WithAltScreen(), tea.WithMouseAllMotion())
+	if _, err := p.Run(); err != nil {
+		panic(err)
+	}
+
+	fmt.Println(*dbmlView.Output)
+}
+
 // createCmd represents the create command
 var CreateCmd = &cobra.Command{
 	Use:   "create",
@@ -203,6 +216,7 @@ var CreateCmd = &cobra.Command{
 			{Title: "Service", Desc: "Generate New Service"},
 			{Title: "NewWithParams", Desc: "Generate New With Params Function"},
 			{Title: "CRUD", Desc: "Generate CRUD"},
+			{Title: "Dbml2struct", Desc: "Generate Struct from Dbml"},
 		}
 		tool := selection.NewModel("Select Tool", tools)
 		p := tea.NewProgram(tool)
@@ -215,16 +229,14 @@ var CreateCmd = &cobra.Command{
 		switch tools[tool.GetIndex()] {
 		case tools[0]:
 			CreateService()
-			return
 		case tools[1]:
 			CreateNewWithParams()
-			return
 		case tools[2]:
 			CreateCrud()
-			return
+		case tools[3]:
+			CreateDbml2struct()
 		default:
 			fmt.Println("invalid choice")
-			return
 		}
 	},
 }
@@ -233,6 +245,7 @@ func init() {
 	CreateCmd.AddCommand(service.ServiceCmd)
 	CreateCmd.AddCommand(nwp.NewWithParamsCmd)
 	CreateCmd.AddCommand(crud.CrudRepoCmd)
+	CreateCmd.AddCommand(dbmlstruct.DbmlstructCmd)
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
