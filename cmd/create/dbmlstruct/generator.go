@@ -161,9 +161,9 @@ func (g *generator) genTable(table Table) error {
 				gotags[strings.TrimSpace(t)] = gtype
 			}
 			group.Id(columnName).Add(typ).Tag(gotags)
-			tb.Tag(dbTags)
 
 		}
+		tb.Tag(dbTags)
 	})
 
 	return f.Save(fmt.Sprintf("%s/%s.table.go", g.out, Normalize(table.Name)))

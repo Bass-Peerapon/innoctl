@@ -1,21 +1,21 @@
-Table car_reservation_cross_campus  {
-  "id" uuid [not null, default: 'uuid_generate_v4()', note:"uuid car reservation cross campus"]
-  "place_start_id" uuid [not null, note:"fk id places"]
-  "place_end_id" uuid [not null, note:"fk id places"]
-  "date_of_service" datetime [not null, note: "วันที่ให้บริการ"] 
-  "time_of_service" timestamp [not null, note: "เวลาที่ให้บริการ"] 
-  "seat_booking" int [not null, note: "จำนวนที่นั่งสำหรับการจอง"]
-  "seat_walk_in" int [not null, note: "จำนวนที่นั่งสำหรับ walk in"]
-  "type" text [not null, note: "ประเภท"]
-  "status" text [not null, note: "สถานะ"]
-  "license_number" VARCHAR(255) [note: "ป้ายทะเบียน"]
-  "car_province" VARCHAR(255) [ note: "จังหวัดทะเบียนรถ"]
-  "firstname_driver" VARCHAR(255) [ note: "ชื่อพนักงานขับรถ"]
-  "lastname_driver" VARCHAR(255) [ note: "นามสกุลพนักงานขับรถ"]
-  created_by uuid [not null, note:"id user (ผู้ยื่นคำขอ)"]
-  created_at TIMESTAMP [default: 'now()',not null, note:"วันเวลาที่ขอ"]
-  updated_by uuid [not null, note:"id user (ผู้แก้ไขล่าสุด)"]
-  updated_at TIMESTAMP [default: 'now()',not null, note:"วันเวลาที่แก้ไขล่าสุด"]
-  deleted_at TIMESTAMP [note:"วันเวลาที่ลบ"]
-  Note: "การจองรอบรถข้ามวิทยาเขต"
+Table follows {
+  following_user_id integer
+  followed_user_id integer
+  created_at timestamp 
+}
+
+Table users {
+  id integer [primary key]
+  username varchar
+  role varchar
+  created_at timestamp
+}
+
+Table posts {
+  id integer [primary key]
+  title varchar
+  body text [note: 'Content of the post']
+  user_id integer
+  status varchar
+  created_at timestamp
 }
