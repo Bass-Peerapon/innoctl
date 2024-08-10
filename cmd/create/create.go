@@ -9,6 +9,7 @@ import (
 	"github.com/Bass-Peerapon/innoctl/cmd/create/crud"
 	"github.com/Bass-Peerapon/innoctl/cmd/create/dbmlstruct"
 	"github.com/Bass-Peerapon/innoctl/cmd/create/nwp"
+	"github.com/Bass-Peerapon/innoctl/cmd/create/project"
 	"github.com/Bass-Peerapon/innoctl/cmd/create/service"
 	filepicker "github.com/Bass-Peerapon/innoctl/ui/file-picker"
 	multiselect "github.com/Bass-Peerapon/innoctl/ui/multiSelect"
@@ -246,6 +247,7 @@ func init() {
 	CreateCmd.AddCommand(nwp.NewWithParamsCmd)
 	CreateCmd.AddCommand(crud.CrudRepoCmd)
 	CreateCmd.AddCommand(dbmlstruct.DbmlstructCmd)
+	CreateCmd.AddCommand(project.ProjectCmd)
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command

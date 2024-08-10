@@ -165,3 +165,10 @@ func (m Model) View() string {
 	sb.WriteString(lipgloss.JoinHorizontal(lipgloss.Left, fmt.Sprintf("%s\n%s\n%s", m.headerDbmlView(), m.DbmlTextArea.View(), m.footerDbmlView()), fmt.Sprintf("%s\n%s\n%s", m.headerGoView(), m.GoView.View(), m.footerGoView())))
 	return sb.String()
 }
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
