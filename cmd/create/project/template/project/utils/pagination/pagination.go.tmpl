@@ -13,7 +13,7 @@ func NewPaginationResult[T any](data []T, totalRows int, page int, perPage int) 
     return &PaginationResult[T]{
         Data:       data,
         TotalRows:  totalRows,
-        TotalPages: (TotalRows + PerPage - 1) / PerPage,
+		    TotalPages: (totalRows + perPage - 1) / perPage,
         Page:       page,
         PerPage:    perPage,
     }
