@@ -135,7 +135,7 @@ func Form(c echo.Context) error {
 }
 
 func parseOnKeyData(data map[string]interface{}) (map[string]interface{}, error) {
-	if data != nil && len(data) == 1 {
+	if data != nil {
 		/*
 			support on data from json format
 		*/

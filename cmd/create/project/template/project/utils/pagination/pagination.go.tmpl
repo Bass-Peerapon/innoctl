@@ -1,0 +1,20 @@
+package pagination
+
+
+type PaginationResult[T any] struct {
+    Data       []T         `json:"data"`
+    TotalRows  int         `json:"total_rows"`
+    TotalPages int         `json:"total_pages"`
+    Page       int         `json:"page"`
+    PerPage    int         `json:"per_page"`
+}
+
+func NewPaginationResult[T any](data []T, totalRows int, page int, perPage int) *PaginationResult[T] {
+    return &PaginationResult[T]{
+        Data:       data,
+        TotalRows:  totalRows,
+        TotalPages: (TotalRows + PerPage - 1) / PerPage,
+        Page:       page,
+        PerPage:    perPage,
+    }
+}

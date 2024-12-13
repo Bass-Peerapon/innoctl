@@ -39,11 +39,9 @@ var (
 	ALLOW_ORIGIN            = strings.Split(helper.GetENV("ALLOW_ORIGIN", "*"), ",")
 	ALLOW_ORIGIN_HEADER     = strings.Split(helper.GetENV("ALLOW_ORIGIN_HEADER", ""), ",")
 	ALLOW_ORIGIN_CREDENTIAL = cast.ToBool(helper.GetENV("ALLOW_ORIGIN_CREDENTIAL", "false"))
-
-	PSQL_DATABASE_URL = helper.GetENV("PSQL_DATABASE_URL", "postgres://postgres:postgres@psql_db:5432/app_example?sslmode=disable")
-
-	SENTRY_DSN          = helper.GetENV("SENTRY_DSN", "")
-	JAEGER_SERVICE_NAME = helper.GetENV("JAEGER_SERVICE_NAME", "")
+	PSQL_DATABASE_URL       = helper.GetENV("PSQL_DATABASE_URL", "postgres://postgres:postgres@psql_db:5432/app_example?sslmode=disable")
+	SENTRY_DSN              = helper.GetENV("SENTRY_DSN", "")
+	JAEGER_SERVICE_NAME     = helper.GetENV("JAEGER_SERVICE_NAME", "")
 )
 
 func sqlDBWithTracing(con string, tracer opentracing.Tracer) *psql.Client {

@@ -79,3 +79,6 @@ var OpenTracingInit []byte
 
 //go:embed project/utils/redis/client.go.tmpl
 var RedisClient []byte
+
+//go:embed project/utils/pagination/pagination.go.tmpl
+var Pagination []byte

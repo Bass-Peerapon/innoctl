@@ -73,6 +73,7 @@ var ProjectCmd = &cobra.Command{
 			"route/grpc.go":                      templater.Grpc,
 			"utils/opentracing/init.go":          templater.OpenTracingInit,
 			"utils/redis/client.go":              templater.RedisClient,
+			"utils/pagination/pagination.go":     templater.Pagination,
 			"main.go":                            templater.Main,
 		}
 
