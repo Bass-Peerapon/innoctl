@@ -94,10 +94,10 @@ func Form(c echo.Context) error {
 				return echo.NewHTTPError(http.StatusBadRequest, map[string]interface{}{"message": err.Error()})
 			}
 
-			/* รูปสำหรับ ใช้งานทั่วไป */
-			if val, ok := form.File["files"]; ok {
-				c.Set("files", val)
+			for k, v := range form.File {
+				c.Set(k, v)
 			}
+
 		} else if strings.Contains(strings.ToLower(contentType), echo.MIMEApplicationJSON) {
 			var err error
 			if err := json.NewDecoder(c.Request().Body).Decode(&data); err != nil && err != io.EOF {
@@ -141,9 +141,10 @@ func parseOnKeyData(data map[string]interface{}) (map[string]interface{}, error)
 		*/
 		if v, ok := data["data"]; ok {
 			valueType := reflect.ValueOf(v).Kind()
-			if valueType == reflect.Map {
+			switch valueType {
+			case reflect.Map:
 				data = v.(map[string]interface{})
-			} else if valueType == reflect.String {
+			case reflect.String:
 				data = map[string]interface{}{}
 				if err := json.Unmarshal([]byte(v.(string)), &data); err != nil {
 					return data, err

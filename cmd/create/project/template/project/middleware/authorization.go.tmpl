@@ -1,12 +1,13 @@
 package middleware
 
 import (
+	"net/http"
+
 	"github.com/labstack/echo/v4"
 )
 
 func (m *GoMiddleware) IsAuthorization(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-
 		if err := IsAuthorization(c); err != nil {
 			var code int
 			var message interface{}
@@ -21,14 +22,14 @@ func (m *GoMiddleware) IsAuthorization(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func IsAuthorization(c echo.Context) error {
-	var header = c.Request().Header
+	header := c.Request().Header
 	if len(header) == 0 {
-		return echo.NewHTTPError(401, map[string]interface{}{"error": "Unauthorize"})
+		return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{"error": "Unauthorize"})
 	}
 
 	authorization := header.Get("Authorization")
 	if authorization == "" {
-		return echo.NewHTTPError(401, map[string]interface{}{"error": "Unauthorize"})
+		return echo.NewHTTPError(http.StatusUnauthorized, map[string]interface{}{"error": "Unauthorize"})
 	}
 
 	return nil

@@ -15,8 +15,8 @@ import (
 func (m *GoMiddleware) SetTracer(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var span opentracing.Span
-		var ctx = c.Request().Context()
-		var spanName = fmt.Sprintf("%s %s %s", c.Scheme(), c.Request().Method, c.Path())
+		ctx := c.Request().Context()
+		spanName := fmt.Sprintf("%s %s %s", c.Scheme(), c.Request().Method, c.Path())
 
 		spanCtx, err := opentracing.GlobalTracer().Extract(opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(c.Request().Header))
 		switch err {
@@ -41,7 +41,7 @@ func (m *GoMiddleware) SetTracer(next echo.HandlerFunc) echo.HandlerFunc {
 		setLogByEcho(span, c)
 
 		if isHTTPError && httpError != nil {
-			setError(span, c, httpError)
+			setError(span, httpError)
 		} else {
 			span.SetTag("error", false)
 			span.SetTag("http.status_code", c.Response().Status)
@@ -59,12 +59,12 @@ func setTagByEcho(span opentracing.Span, c echo.Context) {
 }
 
 func setLogByEcho(span opentracing.Span, c echo.Context) {
-	var paramNameM = map[string]string{}
-	var paramsName = c.ParamNames()
-	var paramsValue = c.ParamValues()
+	paramNameM := map[string]string{}
+	paramsName := c.ParamNames()
+	paramsValue := c.ParamValues()
 	var paramLogString string
 
-	if paramsName != nil && len(paramsName) > 0 {
+	if len(paramsName) > 0 {
 		for index, paramName := range paramsName {
 			paramNameM[paramName] = ""
 			if index <= len(paramsValue)-1 {
@@ -74,7 +74,7 @@ func setLogByEcho(span opentracing.Span, c echo.Context) {
 	}
 
 	if len(paramNameM) > 0 {
-		var logs = []string{}
+		logs := []string{}
 		for k, v := range paramNameM {
 			logs = append(logs, fmt.Sprintf("%s:%s", k, v))
 		}
@@ -87,11 +87,8 @@ func setLogByEcho(span opentracing.Span, c echo.Context) {
 	)
 }
 
-func setError(span opentracing.Span, c echo.Context, err *echo.HTTPError) {
-	var isError = false
-	if err.Code > http.StatusNoContent && err.Code != http.StatusConflict {
-		isError = true
-	}
+func setError(span opentracing.Span, err *echo.HTTPError) {
+	isError := err.Code > http.StatusNoContent && err.Code != http.StatusConflict
 
 	span.SetTag("error", isError)
 	span.SetTag("http.status_code", err.Code)

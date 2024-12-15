@@ -13,7 +13,7 @@ func (m *GoMiddleware) ValidateRequiredHeader(key string) echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			headerVal := c.Request().Header.Get(key)
 			if err := validation.Validate(headerVal, validation.Required); err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, fmt.Errorf("header %s: %s", key, err.Error()).Error())
+				return echo.NewHTTPError(http.StatusBadRequest, fmt.Errorf("header %s: %s", key, err.Error()).Error())
 			}
 
 			return next(c)

@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -13,7 +12,7 @@ func (m *GoMiddleware) RequireQueryParam(key string) echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			param := c.QueryParam(key)
 			if param == "" {
-				return echo.NewHTTPError(http.StatusBadRequest, errors.New(fmt.Sprintf("%s must be required", key)).Error())
+				return echo.NewHTTPError(http.StatusBadRequest, fmt.Errorf("%s must be required", key).Error())
 			}
 			return next(c)
 		}
