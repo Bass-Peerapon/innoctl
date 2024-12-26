@@ -8,14 +8,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// version is the version of the cli to be overwritten by goreleaser in the CI run with the version of the release in github
-var version string
+// Version is the Version of the cli to be overwritten by goreleaser in the CI run with the Version of the release in github
+var Version string
 
 func getVersion() string {
 	noVersionAvailable := "No version info available for this build, run 'innoctl help version' for additional info"
 
-	if len(version) != 0 {
-		return version
+	if len(Version) != 0 {
+		return Version
 	}
 
 	bi, ok := debug.ReadBuildInfo()
