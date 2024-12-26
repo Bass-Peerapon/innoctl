@@ -1,38 +1,27 @@
-# Version for this file.
-version: 1
+before:
+  hooks:
+    - go mod tidy
+    - ./scripts/completions.sh
+builds:
+  - binary: innctl
+    main: ./
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -X cmd.Version={{.Version}}
 
-# (Optional) List of env variables used during compilation.
-env:
-  - GO111MODULE=on
-  - CGO_ENABLED=0
+release:
+  prerelease: auto
 
-# (Optional) Flags for the compiler.
-flags:
-  - -trimpath
-  - -tags=netgo
+universal_binaries:
+  - replace: true
 
-# The OS to compile for. `GOOS` env variable will be set to this value.
-goos:
-  - linux
-  - darwin
-  - windows
-
-# The architecture to compile for. `GOARCH` env variable will be set to this value.
-goarch:
-  - amd64
-  - arm64
-
-# (Optional) Entrypoint to compile.
-# main: ./path/to/main.go
-
-# (Optional) Working directory. (default: root of the project)
-# dir: ./relative/path/to/dir
-
-# Binary output name.
-# {{ .Os }} will be replaced by goos field in the config file.
-# {{ .Arch }} will be replaced by goarch field in the config file.
-binary: binary-{{ .Os }}-{{ .Arch }}
-
-# (Optional) ldflags generated dynamically in the workflow, and set as the `evaluated-envs` input variables in the workflow.
-ldflags:
-  - "-X cmd.Version={{ .Env.VERSION }}"
+checksum:
+  name_template: "checksums.txt"
