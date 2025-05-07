@@ -30,7 +30,10 @@ var ProjectCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		flagName := cmd.Flag("name").Value.String()
 		if flagName != "" && doesDirectoryExistAndIsNotEmpty(flagName) {
-			log.Fatalf("directory '%s' already exists and is not empty. Please choose a different name", flagName)
+			log.Fatalf(
+				"directory '%s' already exists and is not empty. Please choose a different name",
+				flagName,
+			)
 		}
 
 		gopath := os.Getenv("GOPATH")
@@ -38,7 +41,11 @@ var ProjectCmd = &cobra.Command{
 		if err != nil {
 			log.Fatalf("could not get current working directory: %v", err)
 		}
-		moduleName := fmt.Sprintf("%s/%s", strings.ReplaceAll(currentWorkingDir, gopath+"/src/", ""), flagName)
+		moduleName := fmt.Sprintf(
+			"%s/%s",
+			strings.ReplaceAll(currentWorkingDir, gopath+"/src/", ""),
+			flagName,
+		)
 
 		project := Project{
 			ProjectName: flagName,
@@ -50,34 +57,29 @@ var ProjectCmd = &cobra.Command{
 		fmt.Println("Created project directory")
 
 		templates := map[string][]byte{
-			"go.mod":                             templater.GoMod,
-			"docker-compose.yml":                 templater.DockerCompose,
-			"Dockerfile-development":             templater.DockerfileDevelopment,
-			"Dockerfile-production":              templater.DockerfileProduction,
-			".gitignore":                         templater.GitIgnore,
-			".dockerignore":                      templater.DockerIgnore,
-			".env.example":                       templater.EnvExample,
-			"Makefile":                           templater.Makefile,
-			"README.md":                          templater.Readme,
-			"sonar-project.properties":           templater.SonarProperties,
-			"constants/constants.go":             templater.Constants,
-			"middleware/middleware.go":           templater.Middleware,
-			"middleware/authorization.go":        templater.Authorization,
-			"middleware/json_schema.go":          templater.JsonSchema,
-			"middleware/jwt.go":                  templater.Jwt,
-			"middleware/required_header.go":      templater.RequiredHeader,
-			"middleware/required_query_param.go": templater.RequiredQueryParam,
-			"middleware/tracer.go":               templater.Tracer,
-			"middleware/validate_param_id.go":    templater.ValidateParamId,
-			"route/route.go":                     templater.Route,
-			"route/grpc.go":                      templater.Grpc,
-			"utils/opentracing/init.go":          templater.OpenTracingInit,
-			"utils/redis/client.go":              templater.RedisClient,
-			"utils/pagination/pagination.go":     templater.Pagination,
-			"main.go":                            templater.Main,
+			"go.mod":                         templater.GoMod,
+			"docker-compose.yml":             templater.DockerCompose,
+			"Dockerfile-development":         templater.DockerfileDevelopment,
+			"Dockerfile-production":          templater.DockerfileProduction,
+			".gitignore":                     templater.GitIgnore,
+			".dockerignore":                  templater.DockerIgnore,
+			".env.example":                   templater.EnvExample,
+			"Makefile":                       templater.Makefile,
+			"README.md":                      templater.Readme,
+			"sonar-project.properties":       templater.SonarProperties,
+			"constants/constants.go":         templater.Constants,
+			"middleware/middleware.go":       templater.Middleware,
+			"middleware/openapi.go":          templater.OpenAPI,
+			"middleware/tracer.go":           templater.Tracer,
+			"utils/opentracing/init.go":      templater.OpenTracingInit,
+			"utils/redis/client.go":          templater.RedisClient,
+			"utils/pagination/pagination.go": templater.Pagination,
+			"main.go":                        templater.Main,
 		}
 
-		totalSteps := len(templates) + 4 // +4 for directories creation git init, go get, and go tidy
+		totalSteps := len(
+			templates,
+		) + 4 // +4 for directories creation git init, go get, and go tidy
 		currentStep := 1
 
 		// git init

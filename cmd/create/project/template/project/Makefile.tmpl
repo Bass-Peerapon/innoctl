@@ -46,3 +46,5 @@ test.integration:
 	go test ./integration -v -tags=integration -json > integration_test.out
 	cat integration_test.out | go-test-report -o integration.html -t "$(service)"
 
+generate:
+	go generate ./...

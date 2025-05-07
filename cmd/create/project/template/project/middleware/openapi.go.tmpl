@@ -1,0 +1,184 @@
+package middleware
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+
+	"github.com/MicahParks/keyfunc/v3"
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/gofrs/uuid"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/labstack/echo/v4"
+	middleware "github.com/oapi-codegen/echo-middleware"
+)
+
+const JWTClaimsContextKey = "payload"
+
+var (
+	ErrNoAuthHeader        = errors.New("Authorization header is missing")
+	ErrInvalidAuthHeader   = errors.New("Authorization header is malformed")
+	ErrClaimsInvalid       = errors.New("Provided claims do not match expected scopes")
+	ErrUserSessionNotFound = errors.New(
+		"User session not found or doesn't have client attached on it",
+	)
+	ErrIssuerNotFound    = errors.New("Issuer not found")
+	ErrrPermissionDenied = errors.New("Permission denied")
+)
+
+type PermValidator interface {
+	CheckPermission(ctx context.Context, userId *uuid.UUID, perms []string) (bool, error)
+}
+
+func CreateOpenapiMiddleware(
+	jwks keyfunc.Keyfunc,
+	permValidator PermValidator,
+	getSwaggers ...func() (*openapi3.T, error),
+) (echo.MiddlewareFunc, error) {
+	validators := make([]echo.MiddlewareFunc, 0, len(getSwaggers))
+
+	for _, getSwagger := range getSwaggers {
+		spec, err := getSwagger()
+		if err != nil {
+			return nil, err
+		}
+		validator := middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
+			Options: openapi3filter.Options{
+				AuthenticationFunc: NewAuthenticator(jwks, permValidator),
+			},
+			Skipper: func(c echo.Context) bool {
+				return c.Path() == "/" || c.Path() == "/health-check"
+			},
+			ErrorHandler: func(c echo.Context, err *echo.HTTPError) error {
+				return echo.NewHTTPError(http.StatusUnauthorized, err.Message)
+			},
+			SilenceServersWarning: true,
+		})
+		validators = append(validators, validator)
+	}
+
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			var matched bool
+			var epError error
+			for _, v := range validators {
+				// ใช้ middleware ตรวจเฉย ๆ ด้วย dummy handler
+				err := v(func(c echo.Context) error {
+					matched = true
+					return nil
+				})(c)
+
+				epError = err
+
+				if err == nil && matched {
+					break
+				}
+				if epError.Error() != "code=401, message=no matching operation was found" {
+					break
+				}
+
+			}
+
+			if !matched && epError != nil {
+				if epError.Error() == "code=401, message=no matching operation was found" {
+					return echo.NewHTTPError(http.StatusNotFound, "no matching operation was found")
+				}
+				return echo.NewHTTPError(http.StatusUnauthorized, epError.Error())
+
+			}
+			return next(c)
+		}
+	}, nil
+}
+
+// GetJWSFromRequest extracts a JWS string from an Authorization: Bearer <jws> header
+func GetJWSFromRequest(req *http.Request) (string, error) {
+	authHdr := req.Header.Get("Authorization")
+	// Check for the Authorization header.
+	if authHdr == "" {
+		return "", ErrNoAuthHeader
+	}
+	// We expect a header value of the form "Bearer <token>", with 1 space after
+	// Bearer, per spec.
+	prefix := "Bearer "
+	if !strings.HasPrefix(authHdr, prefix) {
+		return "", ErrInvalidAuthHeader
+	}
+	return strings.TrimPrefix(authHdr, prefix), nil
+}
+
+func NewAuthenticator(
+	jwks keyfunc.Keyfunc,
+	permValidator PermValidator,
+) openapi3filter.AuthenticationFunc {
+	return func(ctx context.Context, input *openapi3filter.AuthenticationInput) error {
+		return Authenticate(jwks, permValidator, ctx, input)
+	}
+}
+
+// Authenticate uses the specified validator to ensure a JWT is valid, then makes
+// sure that the claims provided by the JWT match the scopes as required in the API.
+func Authenticate(
+	jwks keyfunc.Keyfunc,
+	permValidator PermValidator,
+	ctx context.Context,
+	input *openapi3filter.AuthenticationInput,
+) error {
+	// Our security scheme is named BearerAuth, ensure this is the case
+	if input.SecuritySchemeName != "BearerAuth" {
+		return fmt.Errorf("security scheme %s != 'BearerAuth'", input.SecuritySchemeName)
+	}
+
+	// Now, we need to get the JWS from the request, to match the request expectations
+	// against request contents.
+	jws, err := GetJWSFromRequest(input.RequestValidationInput.Request)
+	if err != nil {
+		return fmt.Errorf("getting jws: %w", err)
+	}
+
+	token, err := jwt.Parse(jws, jwks.Keyfunc)
+	if err != nil {
+		return fmt.Errorf("parsing jws: %w", err)
+	}
+
+	if !token.Valid {
+		return ErrClaimsInvalid
+	}
+
+	claims := token.Claims
+	bu, err := json.Marshal(claims)
+	if err != nil {
+		return fmt.Errorf("marshaling claims: %w", err)
+	}
+
+	payload := map[string]interface{}{}
+	err = json.Unmarshal(bu, &payload)
+	if err != nil {
+		return fmt.Errorf("unmarshaling claims: %w", err)
+	}
+
+	if len(input.Scopes) != 0 {
+		if permValidator != nil {
+			userID := uuid.FromStringOrNil(payload["sub"].(string))
+			valid, err := permValidator.CheckPermission(ctx, &userID, input.Scopes)
+			if err != nil {
+				return fmt.Errorf("check permission: %w", err)
+			}
+
+			if !valid {
+				return ErrrPermissionDenied
+			}
+		}
+	}
+
+	// Set the property on the echo context so the handler is able to
+	// access the claims data we generate in here.
+	eCtx := middleware.GetEchoContext(ctx)
+	eCtx.Set(JWTClaimsContextKey, payload)
+
+	return nil
+}

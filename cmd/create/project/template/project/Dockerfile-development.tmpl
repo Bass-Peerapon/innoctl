@@ -1,4 +1,4 @@
-FROM golang:1.22.0
+FROM golang:1.23.0
 
 ARG app_name
 ARG build_number
@@ -16,8 +16,7 @@ WORKDIR /go/src/{{.ModuleName}}
 WORKDIR /go/src/{{.ModuleName}}
 
 COPY . . 
-RUN go get -u github.com/githubnemo/CompileDaemon
-RUN go install github.com/githubnemo/CompileDaemon
+RUN go install github.com/githubnemo/CompileDaemon@latest
 RUN go mod tidy     
 
 RUN  go build -o  /go/src/{{.ModuleName}}/tmp/app main.go

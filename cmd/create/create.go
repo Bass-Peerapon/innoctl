@@ -33,7 +33,10 @@ const logo = `
 
 var (
 	logoStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#01FAC6")).Bold(true)
-	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(1).Foreground(lipgloss.Color("170")).Bold(true)
+	selectedItemStyle = lipgloss.NewStyle().
+				PaddingLeft(1).
+				Foreground(lipgloss.Color("170")).
+				Bold(true)
 )
 
 func CreateService() {
@@ -57,10 +60,14 @@ func CreateService() {
 	if serviceModel.IsExit() {
 		return
 	}
-	progressbarProgram := tea.NewProgram(progressbar.InitialProgressbarModel(8))
+	progressbarProgram := tea.NewProgram(progressbar.InitialProgressbarModel(7))
 	c := make(chan struct{})
 	go func() {
-		go service.GenerateWithChannel(serviceName.GetOutput(), drivers[serviceModel.GetIndex()].Title, c)
+		go service.GenerateWithChannel(
+			serviceName.GetOutput(),
+			drivers[serviceModel.GetIndex()].Title,
+			c,
+		)
 		for i := range c {
 			progressbarProgram.Send(progressbar.ProgressMsg(i))
 		}
@@ -82,7 +89,9 @@ func CreateNewWithParams() {
 		return
 	}
 
-	fmt.Printf("Selected file: " + selectedItemStyle.Render(filepickerModel.GetSelectedFile()) + "\n\n")
+	fmt.Printf(
+		"Selected file: " + selectedItemStyle.Render(filepickerModel.GetSelectedFile()) + "\n\n",
+	)
 	progressbarProgram := tea.NewProgram(progressbar.InitialProgressbarModel(5))
 	c := make(chan struct{})
 	go func() {
@@ -108,7 +117,11 @@ func CreateCrud() {
 	if filepickerModel.IsExit() {
 		return
 	}
-	fmt.Printf("Selected model file: " + selectedItemStyle.Render(filepickerModel.GetSelectedFile()) + "\n\n")
+	fmt.Printf(
+		"Selected model file: " + selectedItemStyle.Render(
+			filepickerModel.GetSelectedFile(),
+		) + "\n\n",
+	)
 
 	filepickerRepo := filepicker.InitialFilepickerModel()
 	filepickerRepo.SetTitle("Repo")
@@ -119,7 +132,11 @@ func CreateCrud() {
 	if filepickerRepo.IsExit() {
 		return
 	}
-	fmt.Printf("Selected repo	file: " + selectedItemStyle.Render(filepickerModel.GetSelectedFile()) + "\n\n")
+	fmt.Printf(
+		"Selected repo	file: " + selectedItemStyle.Render(
+			filepickerModel.GetSelectedFile(),
+		) + "\n\n",
+	)
 
 	drivers := []selection.Choice{
 		{Title: "Postgres", Desc: "Go postgres driver for Go"},
@@ -150,7 +167,9 @@ func CreateCrud() {
 		return
 	}
 
-	progressbarProgram := tea.NewProgram(progressbar.InitialProgressbarModel(len(multiselectOpts.GetIndexs())))
+	progressbarProgram := tea.NewProgram(
+		progressbar.InitialProgressbarModel(len(multiselectOpts.GetIndexs())),
+	)
 	c := make(chan struct{})
 	go func() {
 		go func() {

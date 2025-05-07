@@ -47,32 +47,11 @@ var Error []byte
 //go:embed project/middleware/middleware.go.tmpl
 var Middleware []byte
 
-//go:embed project/middleware/authorization.go.tmpl
-var Authorization []byte
-
-//go:embed project/middleware/json_schema.go.tmpl
-var JsonSchema []byte
-
-//go:embed project/middleware/jwt.go.tmpl
-var Jwt []byte
-
-//go:embed project/middleware/required_header.go.tmpl
-var RequiredHeader []byte
-
-//go:embed project/middleware/required_query_param.go.tmpl
-var RequiredQueryParam []byte
+//go:embed project/middleware/openapi.go.tmpl
+var OpenAPI []byte
 
 //go:embed project/middleware/tracer.go.tmpl
 var Tracer []byte
-
-//go:embed project/middleware/validate_param_id.go.tmpl
-var ValidateParamId []byte
-
-//go:embed project/route/route.go.tmpl
-var Route []byte
-
-//go:embed project/route/grpc.go.tmpl
-var Grpc []byte
 
 //go:embed project/utils/opentracing/init.go.tmpl
 var OpenTracingInit []byte

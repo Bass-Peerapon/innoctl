@@ -27,7 +27,8 @@ var ServiceCmd = &cobra.Command{
 
 func init() {
 	ServiceCmd.Flags().StringVarP(&serviceName, "service_name", "n", "", "service name ")
-	ServiceCmd.Flags().StringVarP(&serviceType, "service_type", "t", "", "service type (eg. postgres, mongodb) ")
+	ServiceCmd.Flags().
+		StringVarP(&serviceType, "service_type", "t", "", "service type (eg. postgres, mongodb) ")
 	if err := ServiceCmd.MarkFlagRequired("service_name"); err != nil {
 		fmt.Println(err)
 	}
@@ -87,9 +88,9 @@ func (s Service) GetDefultPath() string {
 const (
 	REPO        = "repository"
 	USECASE     = "usecase"
-	HTTP        = "http"
+	GEN         = "generate"
+	SERVERCFG   = "server.cfg.yaml"
 	HANDLER     = "handler"
-	VALIDATOR   = "validator"
 	DEFULT_PATH = "./service/"
 	SER_NAME_GO = ".go"
 )
@@ -119,9 +120,9 @@ type {{ .CamelCase }}Usecase interface {
 
 var tmpHttpAdapter = `
 package {{.Name}} 
-type {{ .CamelCase }}Handler interface {
 
-}
+// TODO: change here
+//go:generate oapi-codegen --config=./server.cfg.yaml ../../../../document/api-specs/project/v1/{{.Name}}/openapi_bundle.yml
 `
 
 var tmpRepo = `
@@ -184,11 +185,13 @@ func New{{.CamelCase}}Handler({{.LowerCamelCase}}Us {{.Name}}.{{.CamelCase}}Usec
 }
 `
 
-var tmpVal = `
-package validator
-type Validation struct{
-
-}
+var tmpServerCfg = `# yaml-language-server: $schema=https://raw.githubusercontent.com/oapi-codegen/oapi-codegen/HEAD/configuration-schema.json
+package: {{.Name}} 
+output: server.gen.go
+generate:
+  models: true
+  echo-server: true
+  embedded-spec: true
 `
 
 var (
@@ -215,7 +218,10 @@ func GenerateWithChannel(serviceName string, serviceType string, c chan struct{}
 	}
 	c <- struct{}{}
 
-	if err := s.generateHandlerAdapter(); err != nil {
+	if err := s.generateConfig(); err != nil {
+		return err
+	}
+	if err := s.generateHandlerGen(); err != nil {
 		return err
 	}
 	c <- struct{}{}
@@ -241,11 +247,6 @@ func GenerateWithChannel(serviceName string, serviceType string, c chan struct{}
 			return err
 		}
 
-	}
-	c <- struct{}{}
-
-	if err := s.generateValidator(); err != nil {
-		return err
 	}
 	c <- struct{}{}
 
@@ -266,7 +267,12 @@ func Generate(serviceName string, serviceType string) error {
 	if err := s.generateUsecaseAdapter(); err != nil {
 		return err
 	}
-	if err := s.generateHandlerAdapter(); err != nil {
+
+	if err := s.generateConfig(); err != nil {
+		return err
+	}
+	if err := s.generateHandlerGen(); err != nil {
+		fmt.Println(err)
 		return err
 	}
 	if err := s.generateHandler(); err != nil {
@@ -286,11 +292,11 @@ func Generate(serviceName string, serviceType string) error {
 		if err := s.generateMongoReposirory(); err != nil {
 			return err
 		}
+	default:
+		if err := s.generateReposirory(); err != nil {
+			return err
+		}
 
-	}
-
-	if err := s.generateValidator(); err != nil {
-		return err
 	}
 
 	return nil
@@ -392,11 +398,11 @@ func (s Service) generateUsecase() error {
 
 // ./service/{service_name}/http/{serivce_name}_handler.go
 func (s Service) generateHandler() error {
-	dir := "./" + s.GetDefultPath() + "/" + HTTP
+	dir := "./" + s.GetDefultPath() + "/" + GEN
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return err
 	}
-	fn := dir + "/" + s.Name + "_" + HTTP + SER_NAME_GO
+	fn := dir + "/" + s.Name + "_" + GEN + SER_NAME_GO
 	var buf bytes.Buffer
 	t, err := template.New("http").Parse(tmpHttp)
 	if err != nil {
@@ -470,11 +476,11 @@ func (s Service) generateUsecaseAdapter() error {
 	return nil
 }
 
-// ./service/{service_name}/http.go
-func (s Service) generateHandlerAdapter() error {
-	fn := s.GetDefultPath() + "/" + HTTP + SER_NAME_GO
+// ./service/{service_name}/generate.go
+func (s Service) generateHandlerGen() error {
+	fn := s.GetDefultPath() + "/" + GEN + SER_NAME_GO
 	var buf bytes.Buffer
-	t, err := template.New("http").Parse(tmpHttpAdapter)
+	t, err := template.New("generate").Parse(tmpHttpAdapter)
 	if err != nil {
 		return err
 	}
@@ -482,28 +488,19 @@ func (s Service) generateHandlerAdapter() error {
 	if err != nil {
 		return err
 	}
-	code, err := imports.Process("", buf.Bytes(), &imports.Options{
-		Comments: true,
-	})
-	if err != nil {
-		return err
-	}
 
-	if err := os.WriteFile(fn, code, 0644); err != nil {
+	if err := os.WriteFile(fn, buf.Bytes(), 0644); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (s Service) generateValidator() error {
-	dir := "./" + s.GetDefultPath() + "/" + VALIDATOR
-	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-		return err
-	}
-	fn := dir + "/" + VALIDATOR + SER_NAME_GO
+// ./service/{service_name}/server.cfg.yaml
+func (s Service) generateConfig() error {
+	fn := s.GetDefultPath() + "/" + SERVERCFG
 	var buf bytes.Buffer
-	t, err := template.New("validator").Parse(tmpVal)
+	t, err := template.New("cfg").Parse(tmpServerCfg)
 	if err != nil {
 		return err
 	}
@@ -511,14 +508,8 @@ func (s Service) generateValidator() error {
 	if err != nil {
 		return err
 	}
-	code, err := imports.Process("", buf.Bytes(), &imports.Options{
-		Comments: true,
-	})
-	if err != nil {
-		return err
-	}
 
-	if err := os.WriteFile(fn, code, 0644); err != nil {
+	if err := os.WriteFile(fn, buf.Bytes(), 0644); err != nil {
 		return err
 	}
 

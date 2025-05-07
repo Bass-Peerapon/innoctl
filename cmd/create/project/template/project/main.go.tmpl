@@ -2,11 +2,9 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"net"
 	"net/http"
 	"strings"
-	"time"
 
   myMiddL "{{.ModuleName}}/middleware"
 	helperGRPC "git.innovasive.co.th/backend/grpc"
@@ -14,9 +12,6 @@ import (
 	helperMiddl "git.innovasive.co.th/backend/helper/middleware"
 	helperRoute "git.innovasive.co.th/backend/helper/route"
 	"git.innovasive.co.th/backend/psql"
-	_util_resty "git.innovasive.co.th/backend/resty"
-
-  "{{.ModuleName}}/route"
   _util_tracing "{{.ModuleName}}/utils/opentracing"
 	"github.com/getsentry/sentry-go"
 	sentryecho "github.com/getsentry/sentry-go/echo"
@@ -24,8 +19,9 @@ import (
 	echoMiddL "github.com/labstack/echo/v4/middleware"
 	"github.com/opentracing/opentracing-go"
 	"github.com/spf13/cast"
-	"github.com/xeipuuv/gojsonschema"
 	"google.golang.org/grpc"
+  "github.com/MicahParks/keyfunc/v3"
+
 )
 
 var (
@@ -35,13 +31,14 @@ var (
 var (
 	APP_PORT                = helper.GetENV("APP_PORT", "3000")
 	GRPC_PORT               = helper.GetENV("GRPC_PORT", "3100")
-	JWT_SECRET              = helper.GetENV("JWT_SECRET", "amic64")
 	ALLOW_ORIGIN            = strings.Split(helper.GetENV("ALLOW_ORIGIN", "*"), ",")
 	ALLOW_ORIGIN_HEADER     = strings.Split(helper.GetENV("ALLOW_ORIGIN_HEADER", ""), ",")
 	ALLOW_ORIGIN_CREDENTIAL = cast.ToBool(helper.GetENV("ALLOW_ORIGIN_CREDENTIAL", "false"))
 	PSQL_DATABASE_URL       = helper.GetENV("PSQL_DATABASE_URL", "postgres://postgres:postgres@psql_db:5432/app_example?sslmode=disable")
 	SENTRY_DSN              = helper.GetENV("SENTRY_DSN", "")
 	JAEGER_SERVICE_NAME     = helper.GetENV("JAEGER_SERVICE_NAME", "")
+  JWKS_URL             = strings.Split(helper.GetENV("JWKS_URL", ""), ",")
+
 )
 
 func sqlDBWithTracing(con string, tracer opentracing.Tracer) *psql.Client {
@@ -50,30 +47,6 @@ func sqlDBWithTracing(con string, tracer opentracing.Tracer) *psql.Client {
 		panic(err)
 	}
 	return db
-}
-
-func getJSONSchemaLoader(path string) *gojsonschema.Schema {
-	bu, err := os.ReadFile(path)
-	if err != nil {
-		panic(err)
-	}
-	loader := gojsonschema.NewSchemaLoader()
-	loader.Draft = gojsonschema.Draft7
-	loader.AutoDetect = false
-	schema, err := loader.Compile(gojsonschema.NewBytesLoader(bu))
-	if err != nil {
-		panic(err)
-	}
-
-	return schema
-}
-
-func getResty(host string, debug bool) *_util_resty.Client {
-	c := _util_resty.New(host, debug)
-	c.GetRestyClient().RetryCount = 5
-	c.GetRestyClient().SetTimeout(20 * time.Second)
-	c.GetRestyClient().SetDebug(debug)
-	return c
 }
 
 func main() {
@@ -96,17 +69,30 @@ func main() {
 	e := echo.New()
 	e.HTTPErrorHandler = helperMiddl.SentryCapture(e)
 	helperRoute.RegisterVersion(e)
-
-	e.Use(echoMiddL.Logger())
+  e.Use(echoMiddL.RequestLoggerWithConfig(echoMiddL.RequestLoggerConfig{
+		LogError: true,
+		LogValuesFunc: func(c echo.Context, values echoMiddL.RequestLoggerValues) error {
+			if values.Error != nil {
+				c.Logger().Error(values.Error)
+			}
+			return nil
+		},
+	}))
 	e.Use(echoMiddL.Recover())
 	e.Use(sentryecho.New(sentryecho.Options{Repanic: true}))
-
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "Hello, World!")
 	})
+  e.GET("/health-check", func(c echo.Context) error {
+		resp := echo.Map{
+			"status": "ok",
+		}
+		return c.JSON(http.StatusOK, resp)
+	})
 
-	middL := myMiddL.InitMiddleware(JWT_SECRET)
-	e.Use(echoMiddL.Recover())
+
+
+	middL := myMiddL.InitMiddleware()
 	e.Use(echoMiddL.CORSWithConfig(echoMiddL.CORSConfig{
 		Skipper:          echoMiddL.DefaultSkipper,
 		AllowOrigins:     ALLOW_ORIGIN,
@@ -114,12 +100,24 @@ func main() {
 		AllowMethods:     []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
 		AllowCredentials: ALLOW_ORIGIN_CREDENTIAL,
 	}))
-	e.Use(middL.InitContextIfNotExists)
-	e.Use(middL.InputForm)
 	e.Use(middL.SetTracer)
 
-	r := route.NewRoute(e, middL)
-	fmt.Println(r)
+  jwks, err := keyfunc.NewDefault(JWKS_URL)
+	if err != nil {
+		panic(err)
+	}
+
+  mw, err := myMiddL.CreateOpenapiMiddleware(
+		jwks,
+		nil,
+	)
+	if err != nil {
+		panic(err)
+	}
+	e.Use(mw)
+
+
+
 	/* repository */
 
 	/* usecase */
@@ -134,8 +132,6 @@ func main() {
 	/* inject route */
 
 	/* inject grpc route */
-	gr := route.NewGRPCRoute(server)
-  fmt.Println(gr)
 
 	/* serve gprc */
 	go func() {
