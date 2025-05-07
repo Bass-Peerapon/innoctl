@@ -178,7 +178,7 @@ type {{.LowerCamelCase}}Handler struct {
 	{{.LowerCamelCase}}Us {{.Name}}.{{.CamelCase}}Usecase
 }
 
-func New{{.CamelCase}}Handler({{.LowerCamelCase}}Us {{.Name}}.{{.CamelCase}}Usecase) {{.Name}}.{{.CamelCase}}Handler {
+func New{{.CamelCase}}Handler({{.LowerCamelCase}}Us {{.Name}}.{{.CamelCase}}Usecase) {{.Name}}.ServerInterface {
 	return &{{.LowerCamelCase}}Handler{
 		{{.LowerCamelCase}}Us:   {{.LowerCamelCase}}Us,	
 	}
@@ -398,11 +398,11 @@ func (s Service) generateUsecase() error {
 
 // ./service/{service_name}/http/{serivce_name}_handler.go
 func (s Service) generateHandler() error {
-	dir := "./" + s.GetDefultPath() + "/" + GEN
+	dir := "./" + s.GetDefultPath() + "/" + HANDLER
 	if err := os.MkdirAll(dir, os.ModePerm); err != nil {
 		return err
 	}
-	fn := dir + "/" + s.Name + "_" + GEN + SER_NAME_GO
+	fn := dir + "/" + s.Name + "_" + HANDLER + SER_NAME_GO
 	var buf bytes.Buffer
 	t, err := template.New("http").Parse(tmpHttp)
 	if err != nil {
