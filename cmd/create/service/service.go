@@ -173,7 +173,7 @@ func New{{.CamelCase}}Usecase({{.LowerCamelCase}}Repo {{.Name}}.{{.CamelCase}}Re
 `
 
 var tmpHttp = `
-package http
+package handler
 type {{.LowerCamelCase}}Handler struct {
 	{{.LowerCamelCase}}Us {{.Name}}.{{.CamelCase}}Usecase
 }
