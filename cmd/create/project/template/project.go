@@ -47,6 +47,9 @@ var Error []byte
 //go:embed project/middleware/middleware.go.tmpl
 var Middleware []byte
 
+//go:embed project/middleware/jwt.go.tmpl
+var JWT []byte
+
 //go:embed project/middleware/openapi.go.tmpl
 var OpenAPI []byte
 

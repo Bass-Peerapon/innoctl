@@ -37,7 +37,7 @@ var (
 	PSQL_DATABASE_URL       = helper.GetENV("PSQL_DATABASE_URL", "postgres://postgres:postgres@psql_db:5432/app_example?sslmode=disable")
 	SENTRY_DSN              = helper.GetENV("SENTRY_DSN", "")
 	JAEGER_SERVICE_NAME     = helper.GetENV("JAEGER_SERVICE_NAME", "")
-  JWKS_URL             = strings.Split(helper.GetENV("JWKS_URL", ""), ",")
+  	JWKS_URL            	= strings.Split(helper.GetENV("JWKS_URL", ""), ",")
 
 )
 
@@ -55,7 +55,7 @@ func main() {
 		Dsn: SENTRY_DSN,
 	})
 	// /* init tracing*/
-  tracer, closer := _util_tracing.Init("{{.ProjectName}}")
+  	tracer, closer := _util_tracing.Init("{{.ProjectName}}")
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 
@@ -69,7 +69,7 @@ func main() {
 	e := echo.New()
 	e.HTTPErrorHandler = helperMiddl.SentryCapture(e)
 	helperRoute.RegisterVersion(e)
-  e.Use(echoMiddL.RequestLoggerWithConfig(echoMiddL.RequestLoggerConfig{
+  	e.Use(echoMiddL.RequestLoggerWithConfig(echoMiddL.RequestLoggerConfig{
 		LogError: true,
 		LogValuesFunc: func(c echo.Context, values echoMiddL.RequestLoggerValues) error {
 			if values.Error != nil {
@@ -83,7 +83,7 @@ func main() {
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "Hello, World!")
 	})
-  e.GET("/health-check", func(c echo.Context) error {
+  	e.GET("/health-check", func(c echo.Context) error {
 		resp := echo.Map{
 			"status": "ok",
 		}
@@ -102,12 +102,12 @@ func main() {
 	}))
 	e.Use(middL.SetTracer)
 
-  jwks, err := keyfunc.NewDefault(JWKS_URL)
+  	jwks, err := keyfunc.NewDefault(JWKS_URL)
 	if err != nil {
 		panic(err)
 	}
 
-  mw, err := myMiddL.CreateOpenapiMiddleware(
+  	mw, err := myMiddL.CreateOpenapiMiddleware(
 		jwks,
 		nil,
 	)

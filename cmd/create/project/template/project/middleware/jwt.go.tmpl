@@ -1,0 +1,29 @@
+package middleware
+
+import (
+	"fmt"
+
+	"github.com/MicahParks/keyfunc/v3"
+	"github.com/golang-jwt/jwt/v5"
+)
+
+type Claims struct {
+	jwt.RegisteredClaims
+	Username   string `json:"preferred_username"`
+	Name       string `json:"name"`
+	GivenName  string `json:"given_name"`
+	FamilyName string `json:"family_name"`
+}
+
+func ValidateToken(tokenString string, jwks keyfunc.Keyfunc) (*Claims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, jwks.Keyfunc)
+	if err != nil {
+		return nil, err
+	}
+
+	if claims, ok := token.Claims.(*Claims); ok && token.Valid {
+		return claims, nil
+	}
+
+	return nil, fmt.Errorf("invalid token")
+}

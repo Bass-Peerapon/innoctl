@@ -69,6 +69,7 @@ var ProjectCmd = &cobra.Command{
 			"sonar-project.properties":       templater.SonarProperties,
 			"constants/constants.go":         templater.Constants,
 			"middleware/middleware.go":       templater.Middleware,
+			"middleware/jwt.go":              templater.JWT,
 			"middleware/openapi.go":          templater.OpenAPI,
 			"middleware/tracer.go":           templater.Tracer,
 			"utils/opentracing/init.go":      templater.OpenTracingInit,

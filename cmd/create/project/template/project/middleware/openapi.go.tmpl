@@ -2,17 +2,15 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
-	"github.com/gofrs/uuid"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	middleware "github.com/oapi-codegen/echo-middleware"
 )
@@ -31,7 +29,7 @@ var (
 )
 
 type PermValidator interface {
-	CheckPermission(ctx context.Context, userId *uuid.UUID, perms []string) (bool, error)
+	CheckPermission(ctx context.Context, id string, perms []string) (bool, error)
 }
 
 func CreateOpenapiMiddleware(
@@ -54,7 +52,10 @@ func CreateOpenapiMiddleware(
 				return c.Path() == "/" || c.Path() == "/health-check"
 			},
 			ErrorHandler: func(c echo.Context, err *echo.HTTPError) error {
-				return echo.NewHTTPError(http.StatusUnauthorized, err.Message)
+				if err != nil && err.Code == http.StatusNotFound {
+					return echo.NewHTTPError(http.StatusNotFound, err.Message)
+				}
+				return err
 			},
 			SilenceServersWarning: true,
 		})
@@ -64,35 +65,51 @@ func CreateOpenapiMiddleware(
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			var matched bool
-			var epError error
+			var err error
 			for _, v := range validators {
 				// ใช้ middleware ตรวจเฉย ๆ ด้วย dummy handler
-				err := v(func(c echo.Context) error {
+				err = v(func(c echo.Context) error {
 					matched = true
 					return nil
 				})(c)
 
-				epError = err
-
 				if err == nil && matched {
 					break
 				}
-				if epError.Error() != "code=401, message=no matching operation was found" {
-					break
+				if !strings.Contains(err.Error(), "no matching operation was found") {
+					if strings.Contains(err.Error(), "code=401") {
+						return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+					}
+					return NewMultiErrorHandler(err)
 				}
 
 			}
 
-			if !matched && epError != nil {
-				if epError.Error() == "code=401, message=no matching operation was found" {
-					return echo.NewHTTPError(http.StatusNotFound, "no matching operation was found")
+			if !matched && err != nil {
+				if !strings.Contains(err.Error(), "no matching operation was found") {
+					if strings.Contains(err.Error(), "code=401") {
+						return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
+					}
+					return NewMultiErrorHandler(err)
 				}
-				return echo.NewHTTPError(http.StatusUnauthorized, epError.Error())
-
 			}
 			return next(c)
 		}
 	}, nil
+}
+
+func NewMultiErrorHandler(err error) *echo.HTTPError {
+	if he, ok := err.(*echo.HTTPError); ok {
+		switch he.Internal.(type) {
+		case *openapi3filter.RequestError:
+			e := he.Internal.(*openapi3filter.RequestError)
+			return echo.NewHTTPError(http.StatusBadRequest, e.Err)
+		default:
+			return echo.NewHTTPError(http.StatusBadRequest, he.Error())
+		}
+
+	}
+	return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 }
 
 // GetJWSFromRequest extracts a JWS string from an Authorization: Bearer <jws> header
@@ -130,55 +147,42 @@ func Authenticate(
 ) error {
 	// Our security scheme is named BearerAuth, ensure this is the case
 	if input.SecuritySchemeName != "BearerAuth" {
-		return fmt.Errorf("security scheme %s != 'BearerAuth'", input.SecuritySchemeName)
+		return echo.NewHTTPError(http.StatusUnauthorized, fmt.Errorf("security scheme %s != 'BearerAuth'", input.SecuritySchemeName))
 	}
 
 	// Now, we need to get the JWS from the request, to match the request expectations
 	// against request contents.
 	jws, err := GetJWSFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		return fmt.Errorf("getting jws: %w", err)
+		return echo.NewHTTPError(http.StatusUnauthorized, fmt.Errorf("getting jws: %w", err))
 	}
 
-	token, err := jwt.Parse(jws, jwks.Keyfunc)
+	claims, err := ValidateToken(jws, jwks)
 	if err != nil {
-		return fmt.Errorf("parsing jws: %w", err)
+		return echo.NewHTTPError(http.StatusUnauthorized, fmt.Errorf("validating token: %w", err))
 	}
 
-	if !token.Valid {
-		return ErrClaimsInvalid
-	}
-
-	claims := token.Claims
-	bu, err := json.Marshal(claims)
-	if err != nil {
-		return fmt.Errorf("marshaling claims: %w", err)
-	}
-
-	payload := map[string]interface{}{}
-	err = json.Unmarshal(bu, &payload)
-	if err != nil {
-		return fmt.Errorf("unmarshaling claims: %w", err)
+	// Check if token is expired
+	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
+		return echo.NewHTTPError(http.StatusUnauthorized, errors.New("token is expired"))
 	}
 
 	if len(input.Scopes) != 0 {
 		if permValidator != nil {
-			userID := uuid.FromStringOrNil(payload["sub"].(string))
-			valid, err := permValidator.CheckPermission(ctx, &userID, input.Scopes)
+			//NOTE: can change id to your own id
+			valid, err := permValidator.CheckPermission(ctx, claims.Username, input.Scopes)
 			if err != nil {
-				return fmt.Errorf("check permission: %w", err)
+				return echo.NewHTTPError(http.StatusUnauthorized, fmt.Errorf("check permission: %w", err))
 			}
 
 			if !valid {
-				return ErrrPermissionDenied
+				return echo.NewHTTPError(http.StatusUnauthorized, ErrrPermissionDenied)
 			}
 		}
 	}
 
-	// Set the property on the echo context so the handler is able to
-	// access the claims data we generate in here.
 	eCtx := middleware.GetEchoContext(ctx)
-	eCtx.Set(JWTClaimsContextKey, payload)
+	eCtx.Set(JWTClaimsContextKey, claims)
 
 	return nil
 }
