@@ -1,18 +1,20 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
-
-  myMiddL "{{.ModuleName}}/middleware"
-	helperGRPC "git.innovasive.co.th/backend/grpc"
-	"git.innovasive.co.th/backend/helper"
-	helperMiddl "git.innovasive.co.th/backend/helper/middleware"
-	helperRoute "git.innovasive.co.th/backend/helper/route"
+	"time"
+	"log/slog"
+  	myMiddL "{{.ModuleName}}/middleware"
+	helperGRPC "{{.ModuleName}}/utils/grpc"
+	"{{.ModuleName}}/utils/helper"
 	"git.innovasive.co.th/backend/psql"
-  _util_tracing "{{.ModuleName}}/utils/opentracing"
+  	_util_tracing "{{.ModuleName}}/utils/opentracing"
 	"github.com/getsentry/sentry-go"
 	sentryecho "github.com/getsentry/sentry-go/echo"
 	"github.com/labstack/echo/v4"
@@ -20,8 +22,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/spf13/cast"
 	"google.golang.org/grpc"
-  "github.com/MicahParks/keyfunc/v3"
-
+  	"github.com/MicahParks/keyfunc/v3"
 )
 
 var (
@@ -67,19 +68,22 @@ func main() {
 	defer server.GracefulStop()
 
 	e := echo.New()
-	e.HTTPErrorHandler = helperMiddl.SentryCapture(e)
-	helperRoute.RegisterVersion(e)
-  	e.Use(echoMiddL.RequestLoggerWithConfig(echoMiddL.RequestLoggerConfig{
-		LogError: true,
-		LogValuesFunc: func(c echo.Context, values echoMiddL.RequestLoggerValues) error {
-			if values.Error != nil {
-				c.Logger().Error(values.Error)
-			}
-			return nil
-		},
-	}))
 	e.Use(echoMiddL.Recover())
 	e.Use(sentryecho.New(sentryecho.Options{Repanic: true}))
+	e.Use(echoMiddL.CORSWithConfig(echoMiddL.CORSConfig{
+		Skipper:          echoMiddL.DefaultSkipper,
+		AllowOrigins:     ALLOW_ORIGIN,
+		AllowHeaders:     ALLOW_ORIGIN_HEADER,
+		AllowMethods:     []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
+		AllowCredentials: ALLOW_ORIGIN_CREDENTIAL,
+	}))
+	middL := myMiddL.InitMiddleware()
+	e.Use(middL.SetTracer)
+	e.Use(middL.TransformResponse)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	e.Use(myMiddL.Logger(logger))
+	e.HTTPErrorHandler = myMiddL.SentryCapture(e)
+
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "Hello, World!")
 	})
@@ -89,18 +93,16 @@ func main() {
 		}
 		return c.JSON(http.StatusOK, resp)
 	})
-
-
-
-	middL := myMiddL.InitMiddleware()
-	e.Use(echoMiddL.CORSWithConfig(echoMiddL.CORSConfig{
-		Skipper:          echoMiddL.DefaultSkipper,
-		AllowOrigins:     ALLOW_ORIGIN,
-		AllowHeaders:     ALLOW_ORIGIN_HEADER,
-		AllowMethods:     []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
-		AllowCredentials: ALLOW_ORIGIN_CREDENTIAL,
-	}))
-	e.Use(middL.SetTracer)
+	e.GET("/version", func(c echo.Context) error {
+		goVersion := helper.GetENV("GOLANG_VERSION", "not found env on key 'GOLANG_VERSION'")
+		buildNumber := helper.GetENV("env_build_number", "not found env on key 'env_build_number'")
+		version := helper.GetENV("env_version", "not found env on key 'env_version'")
+		return c.JSON(http.StatusOK, echo.Map{
+			"go_version":   goVersion,
+			"build_number": buildNumber,
+			"version":      version,
+		})
+	})
 
   	jwks, err := keyfunc.NewDefault(JWKS_URL)
 	if err != nil {
@@ -126,12 +128,12 @@ func main() {
 
 	/* gprc handler */
 
-	/* validate */
-	
-
 	/* inject route */
 
 	/* inject grpc route */
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
 
 	/* serve gprc */
 	go func() {
@@ -141,12 +143,21 @@ func main() {
 		startGRPCServer(server)
 	}()
 
-	/* serve echo */
-	port := fmt.Sprintf(":%s", APP_PORT)
-	if sentryErr == nil {
-		sentry.CaptureException(e.Start(port))
-	} else {
-		e.Logger.Fatal(e.Start(port))
+	go func() {
+		/* serve echo */
+		port := fmt.Sprintf(":%s", APP_PORT)
+		if sentryErr == nil {
+			sentry.CaptureException(e.Start(port))
+		} else {
+			e.Logger.Fatal(e.Start(port))
+		}
+	}()
+
+	<-ctx.Done()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := e.Shutdown(ctx); err != nil {
+		e.Logger.Fatal(err)
 	}
 }
 

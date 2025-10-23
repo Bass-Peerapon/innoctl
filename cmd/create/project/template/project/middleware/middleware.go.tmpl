@@ -9,6 +9,7 @@ import (
 type GoMiddlewareInf interface {
 	InitContextIfNotExists(next echo.HandlerFunc) echo.HandlerFunc
 	SetTracer(next echo.HandlerFunc) echo.HandlerFunc
+	TransformResponse(next echo.HandlerFunc) echo.HandlerFunc
 }
 
 // GoMiddleware represent the data-struct for middleware

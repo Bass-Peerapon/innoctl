@@ -1,0 +1,32 @@
+package middleware
+
+import (
+	"net/http"
+
+	"{{.ModuleName}}/response"
+	"github.com/labstack/echo/v4"
+)
+
+func (m *GoMiddleware) TransformResponse(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		if err := next(c); err != nil {
+			switch v := err.(type) {
+			case response.Response:
+				if v.HttpStatus >= http.StatusInternalServerError {
+					ecErr := &echo.HTTPError{
+						Code:    v.HttpStatus,
+						Message: v,
+					}
+					c.Error(ecErr)
+					return nil
+				} else if v.HttpStatus >= http.StatusNoContent {
+					return c.NoContent(v.HttpStatus)
+				}
+				return c.JSON(v.HttpStatus, v)
+			}
+			return err
+		}
+		return nil
+	}
+}
+

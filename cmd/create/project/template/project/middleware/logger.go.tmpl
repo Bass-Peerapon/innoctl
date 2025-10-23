@@ -1,0 +1,44 @@
+package middleware
+
+import (
+	"context"
+	"log/slog"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
+)
+
+func Logger(logger *slog.Logger) echo.MiddlewareFunc {
+	return middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
+		LogStatus:    true,
+		LogURI:       true,
+		LogError:     true,
+		HandleError:  true,
+		LogMethod:    true,
+		LogLatency:   true,
+		LogUserAgent: true,
+		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
+			if v.Error == nil {
+				logger.LogAttrs(context.Background(), slog.LevelInfo, "",
+					slog.String("method", v.Method),
+					slog.String("uri", v.URI),
+					slog.Int("status", v.Status),
+					slog.String("latency", v.Latency.String()),
+					slog.String("client_ip", c.Request().Header.Get("X-Forwarded-For")),
+					slog.String("user_agent", c.Request().Header.Get("User-Agent")),
+				)
+			} else {
+				logger.LogAttrs(context.Background(), slog.LevelError, v.Error.Error(),
+					slog.String("method", v.Method),
+					slog.String("uri", v.URI),
+					slog.Int("status", v.Status),
+					slog.String("latency", v.Latency.String()),
+					slog.String("client_ip", c.Request().Header.Get("X-Forwarded-For")),
+					slog.String("user_agent", c.Request().Header.Get("User-Agent")),
+				)
+
+			}
+			return nil
+		},
+	})
+}

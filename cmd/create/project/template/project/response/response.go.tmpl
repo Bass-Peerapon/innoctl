@@ -1,0 +1,128 @@
+package response
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+)
+
+// ResponseCode represents the response code type
+type ResponseCode string
+
+// Response codes constants
+const (
+	// default status
+	RESPONSE_CODE_OK          ResponseCode = "200000" // OK
+	RESPONSE_CODE_CREATED     ResponseCode = "201000" // Created
+	RESPONSE_CODE_BAD_REQUEST ResponseCode = "400000" // Bad request
+	RESPONSE_CODE_NOT_FOUND   ResponseCode = "404000" // Not found
+	RESPONSE_CODE_INTERNAL    ResponseCode = "500000" // Internal
+
+	// add on conflict
+	RESPONSE_CODE_INVALID_ARGUMENT ResponseCode = "400000" // Invalid argument
+	RESPONSE_CODE_UNAUTHORIZE      ResponseCode = "401000" // Unauthorize
+)
+
+// ResponseErrorType maps response codes to error types
+var ResponseErrorType = map[ResponseCode]string{
+	RESPONSE_CODE_INVALID_ARGUMENT: "invalid_argument",
+	RESPONSE_CODE_UNAUTHORIZE:      "unauthorize",
+	RESPONSE_CODE_INTERNAL:         "internal_error",
+}
+
+// ErrorConflict represents a conflict error
+type ErrorConflict struct {
+	httpStatus   int
+	responseCode ResponseCode
+	message      string
+}
+
+func (e ErrorConflict) GetStatus() int                { return e.httpStatus }
+func (e ErrorConflict) GetResponseCode() ResponseCode { return e.responseCode }
+func (e ErrorConflict) GetMessage() string            { return e.message }
+
+func (e ErrorConflict) Error() string {
+	return fmt.Sprintf("%s %s", e.responseCode, e.message)
+}
+
+func newErrorConflict(httpStatus int, code ResponseCode, message string) ErrorConflict {
+	return ErrorConflict{httpStatus, code, message}
+}
+
+// Predefined error conflicts
+
+var (
+	ERROR_INVALID_TOKEN = newErrorConflict(http.StatusUnauthorized, RESPONSE_CODE_UNAUTHORIZE, "invalid token")
+)
+
+// Response represents the API response structure
+type Response struct {
+	HttpStatus      int          `json:"-"`
+	ResponseCode    ResponseCode `json:"code"`
+	ErrorType       string       `json:"error_type"`
+	Message         string       `json:"message"`
+	Data            any          `json:"data"`
+	UnexpectedError error        `json:"-"`
+}
+
+func (r Response) Error() string {
+	return fmt.Sprintf("code=%d error_type=%s message=%s", r.HttpStatus, r.ErrorType, r.Message)
+}
+
+func (r Response) String() string {
+	bu, _ := json.Marshal(r)
+	return string(bu)
+}
+
+// NewResponseJSON creates a successful JSON response
+func NewResponseJSON(data any) Response {
+	return Response{
+		HttpStatus:   http.StatusOK,
+		ResponseCode: RESPONSE_CODE_OK,
+		Message:      "successful",
+		Data:         data,
+	}
+}
+
+// NewResponseError creates an error response
+func NewResponseError(httpStatus int, code ResponseCode, message string, data any) Response {
+	switch httpStatus {
+	case http.StatusInternalServerError:
+		code = RESPONSE_CODE_INTERNAL
+	}
+
+	var errType = "unknown"
+	if ty, ok := ResponseErrorType[code]; ok {
+		errType = ty
+	}
+
+	return Response{
+		HttpStatus:   httpStatus,
+		ResponseCode: code,
+		ErrorType:    errType,
+		Message:      message,
+		Data:         data,
+	}
+}
+
+// NewResponseErrorConflict creates a conflict error response
+func NewResponseErrorConflict(errConflict ErrorConflict) Response {
+	var errType = "unknown"
+	if ty, ok := ResponseErrorType[errConflict.GetResponseCode()]; ok {
+		errType = ty
+	}
+
+	return Response{
+		HttpStatus:   errConflict.GetStatus(),
+		ResponseCode: errConflict.GetResponseCode(),
+		ErrorType:    errType,
+		Message:      errConflict.GetMessage(),
+	}
+}
+
+// NewResponseNoContent creates a no content response
+func NewResponseNoContent() Response {
+	return Response{
+		HttpStatus: http.StatusNoContent,
+	}
+}

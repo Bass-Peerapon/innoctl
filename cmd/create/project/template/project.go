@@ -38,6 +38,9 @@ var SonarProperties []byte
 //go:embed project/constants/constants.go.tmpl
 var Constants []byte
 
+//go:embed project/response/response.go.tmpl
+var Response []byte
+
 //go:embed project/constants/enum.go.tmpl
 var Enum []byte
 
@@ -50,11 +53,20 @@ var Middleware []byte
 //go:embed project/middleware/jwt.go.tmpl
 var JWT []byte
 
+//go:embed project/middleware/logger.go.tmpl
+var Logger []byte
+
+//go:embed project/middleware/capture.go.tmpl
+var Capture []byte
+
 //go:embed project/middleware/openapi.go.tmpl
 var OpenAPI []byte
 
 //go:embed project/middleware/tracer.go.tmpl
 var Tracer []byte
+
+//go:embed project/middleware/transform_response.go.tmpl
+var TransformResponse []byte
 
 //go:embed project/utils/opentracing/init.go.tmpl
 var OpenTracingInit []byte
@@ -64,3 +76,9 @@ var RedisClient []byte
 
 //go:embed project/utils/pagination/pagination.go.tmpl
 var Pagination []byte
+
+//go:embed project/utils/helper/env.go.tmpl
+var Env []byte
+
+//go:embed project/utils/grpc/grpc.go.tmpl
+var Grpc []byte

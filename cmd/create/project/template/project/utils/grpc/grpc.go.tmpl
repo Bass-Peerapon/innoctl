@@ -1,0 +1,236 @@
+package grpc
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"reflect"
+	"runtime/debug"
+	"time"
+
+	"github.com/getsentry/sentry-go"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/recovery"
+	otgrpc "github.com/opentracing-contrib/go-grpc"
+	"github.com/opentracing/opentracing-go"
+	"github.com/spf13/cast"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/reflect/protoreflect"
+)
+
+/*
+Example Default
+  - NewClient(JAEGER_SERVICE_NAME, SENTRY_DSN)
+
+Example with Addon ServerOption
+  - options = grpc.MaxRecvMsgSize(grpcMaxReceiveSize) = ขยายขนาด Body buffer ที่รับได้
+  - NewClient(JAEGER_SERVICE_NAME, SENTRY_DSN, options)
+*/
+func NewServer(serviceName string, sentryDSN string, opt ...grpc.ServerOption) *grpc.Server {
+	tracer := opentracing.GlobalTracer()
+
+	options := make([]grpc.ServerOption, 0)
+	options = append(options, opt...)
+	options = append(options,
+		grpc.ChainUnaryInterceptor(
+			grpc.UnaryServerInterceptor(
+				otgrpc.OpenTracingServerInterceptor(tracer),
+			),
+			recovery.UnaryServerInterceptor(
+				recovery.WithRecoveryHandler(grpcCaptureRecover(serviceName, sentryDSN)),
+			),
+			grpc.UnaryServerInterceptor(
+				UnaryServerGrpcCaptureException(serviceName, sentryDSN),
+			),
+		),
+		grpc.ChainStreamInterceptor(
+			grpc.StreamServerInterceptor(
+				otgrpc.OpenTracingStreamServerInterceptor(tracer),
+			),
+			recovery.StreamServerInterceptor(
+				recovery.WithRecoveryHandler(grpcCaptureRecover(serviceName, sentryDSN)),
+			),
+			grpc.StreamServerInterceptor(
+				StreamServerGrpcCaptureException(serviceName, sentryDSN),
+			),
+		),
+	)
+
+	return grpc.NewServer(options...)
+}
+
+/*
+Example
+  - NewClient(context.Background(), "localhost:3100", 30)
+*/
+func NewClient(ctx context.Context, grpcAddress string, timeoutSecond int, opt ...grpc.DialOption) (context.Context, context.CancelFunc, *grpc.ClientConn, error) {
+	options := make([]grpc.DialOption, 0)
+	options = append(options, opt...)
+	options = append(options,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(
+			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+		),
+		grpc.WithStreamInterceptor(
+			otgrpc.OpenTracingStreamClientInterceptor(opentracing.GlobalTracer()),
+		),
+	)
+
+	conn, err := grpc.NewClient(grpcAddress, options...)
+	if err != nil {
+		return ctx, nil, nil, fmt.Errorf("fail to connect on service with address %s", grpcAddress)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecond*int(time.Second)))
+	return ctx, cancel, conn, nil
+}
+
+func StreamServerGrpcCaptureException(serviceName string, sentryDSN string) func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	return func(srv interface{}, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		err := handler(srv, stream)
+		status, statusOK := status.FromError(err)
+		if statusOK && status != nil {
+			if status.Code() == codes.Unknown ||
+				status.Code() == codes.OK ||
+				status.Code() == codes.NotFound {
+				fmt.Printf("[GRPC-%s](%s) %s: %s \n", serviceName, info.FullMethod, status.Code(), status.Message())
+				return err
+			}
+
+			if sentryDSN != "" {
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Println(r)
+					}
+				}()
+				mainTitle := fmt.Sprintf("[GRPC] %s: %s", status.Code(), status.Message())
+				subTitle := fmt.Sprintf("%s: %s", serviceName, info.FullMethod)
+				log.Println(mainTitle)
+				log.Println(subTitle)
+
+				event := &sentry.Event{
+					Level:       sentry.LevelError,
+					Environment: os.Getenv("SENTRY_ENVIRONMENT"),
+					Tags: map[string]string{
+						"service_name": serviceName,
+					},
+					Exception: []sentry.Exception{
+						{
+							Type:  mainTitle,
+							Value: subTitle,
+						},
+					},
+				}
+				sentry.CurrentHub().CaptureEvent(event)
+			}
+		}
+		return err
+	}
+}
+
+func grpcCaptureRecover(serviceName string, sentryDSN string) recovery.RecoveryHandlerFunc {
+	return func(p any) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Println(r)
+				if tmp, ok := r.(error); ok {
+					err = tmp
+				}
+				debug.PrintStack()
+			}
+		}()
+		if sentryDSN != "" {
+			event := &sentry.Event{
+				Level:       sentry.LevelError,
+				Environment: os.Getenv("SENTRY_ENVIRONMENT"),
+				Exception:   []sentry.Exception{},
+				Tags: map[string]string{
+					"service_name": serviceName,
+				},
+			}
+			switch reflect.TypeOf(p).Kind() {
+			case reflect.String:
+				mainTitle := fmt.Sprintf("[GRPC] %s", cast.ToString(p))
+				event.Exception = append(event.Exception, sentry.Exception{
+					Type:       mainTitle,
+					Value:      serviceName,
+					Stacktrace: sentry.NewStacktrace(),
+				})
+			default:
+				if v, ok := p.(error); ok {
+					mainTitle := fmt.Sprintf("[GRPC] %s", v.Error())
+					event.Exception = append(event.Exception, sentry.Exception{
+						Type:       mainTitle,
+						Value:      serviceName,
+						Stacktrace: sentry.NewStacktrace(),
+					})
+				}
+			}
+			sentry.CurrentHub().CaptureEvent(event)
+		}
+
+		log.Println("msg", "recovered from panic", p, "stack", string(debug.Stack()))
+		return status.Errorf(codes.Internal, "%s", p)
+	}
+}
+
+func UnaryServerGrpcCaptureException(serviceName string, sentryDSN string) func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
+		resp, err = handler(ctx, req)
+		status, statusOK := status.FromError(err)
+		if statusOK && status != nil {
+			if status.Code() == codes.Unknown ||
+				status.Code() == codes.OK ||
+				status.Code() == codes.NotFound {
+				fmt.Printf("[GRPC-%s](%s) %s: %s \n", serviceName, info.FullMethod, status.Code(), status.Message())
+				return resp, err
+			}
+
+			if sentryDSN != "" {
+				sentry.WithScope(func(scope *sentry.Scope) {
+					defer func() {
+						if r := recover(); r != nil {
+							fmt.Println(r)
+						}
+					}()
+
+					var reqBody = make([]byte, 0)
+					if v, ok := req.(protoreflect.ProtoMessage); ok {
+						reqBody, _ = protojson.Marshal(v)
+					} else {
+						reqBody, _ = json.Marshal(req)
+					}
+
+					mainTitle := fmt.Sprintf("[GRPC] %s: %s", status.Code(), status.Message())
+					subTitle := fmt.Sprintf("%s: %s", serviceName, info.FullMethod)
+					log.Println(mainTitle)
+					log.Println(subTitle)
+
+					event := &sentry.Event{
+						Level:       sentry.LevelError,
+						Environment: os.Getenv("SENTRY_ENVIRONMENT"),
+						Tags: map[string]string{
+							"service_name": serviceName,
+						},
+						Extra: map[string]interface{}{
+							"body": string(reqBody),
+						},
+						Exception: []sentry.Exception{
+							{
+								Type:  mainTitle,
+								Value: subTitle,
+							},
+						},
+					}
+					sentry.CurrentHub().CaptureEvent(event)
+				})
+			}
+		}
+		return resp, err
+	}
+}
