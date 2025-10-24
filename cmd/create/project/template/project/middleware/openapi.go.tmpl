@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
+	"{{.ModuleName}}/response"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -28,6 +28,10 @@ var (
 	ErrrPermissionDenied = errors.New("Permission denied")
 )
 
+func init() {
+	openapi3.SchemaErrorDetailsDisabled = true
+}
+
 type PermValidator interface {
 	CheckPermission(ctx context.Context, id string, perms []string) (bool, error)
 }
@@ -47,6 +51,7 @@ func CreateOpenapiMiddleware(
 		validator := middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
 			Options: openapi3filter.Options{
 				AuthenticationFunc: NewAuthenticator(jwks, permValidator),
+				MultiError:         true,
 			},
 			Skipper: func(c echo.Context) bool {
 				return c.Path() == "/" || c.Path() == "/health-check"
@@ -77,9 +82,6 @@ func CreateOpenapiMiddleware(
 					break
 				}
 				if !strings.Contains(err.Error(), "no matching operation was found") {
-					if strings.Contains(err.Error(), "code=401") {
-						return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
-					}
 					return NewMultiErrorHandler(err)
 				}
 
@@ -87,9 +89,6 @@ func CreateOpenapiMiddleware(
 
 			if !matched && err != nil {
 				if !strings.Contains(err.Error(), "no matching operation was found") {
-					if strings.Contains(err.Error(), "code=401") {
-						return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
-					}
 					return NewMultiErrorHandler(err)
 				}
 			}
@@ -98,18 +97,103 @@ func CreateOpenapiMiddleware(
 	}, nil
 }
 
-func NewMultiErrorHandler(err error) *echo.HTTPError {
+type DataResponseError struct {
+	Field   string  `json:"field"`
+	In      *string `json:"in,omitempty"`
+	Message string  `json:"message"`
+}
+
+func NewMultiErrorHandler(err error) response.Response {
+	if authErr, ok := err.(AuthError); ok {
+		return response.NewResponseError(http.StatusUnauthorized, response.RESPONSE_CODE_UNAUTHORIZE, authErr.Message, nil)
+	}
 	if he, ok := err.(*echo.HTTPError); ok {
-		switch he.Internal.(type) {
+		switch internalErr := he.Internal.(type) {
+		// ---- Single Error from Request Validation ----
 		case *openapi3filter.RequestError:
-			e := he.Internal.(*openapi3filter.RequestError)
-			return echo.NewHTTPError(http.StatusBadRequest, e.Err)
-		default:
-			return echo.NewHTTPError(http.StatusBadRequest, he.Error())
+			reason := ""
+			if internalErr.Err != nil {
+				reason = internalErr.Err.Error()
+			}
+			if internalErr.Parameter != nil {
+				reason = fmt.Sprintf("parameter %q in %s has an error: %s", internalErr.Parameter.Name, internalErr.Parameter.In, reason)
+			} else if internalErr.RequestBody != nil {
+				reason = fmt.Sprintf("request body has an error: %s", reason)
+			}
+			return response.NewResponseError(http.StatusBadRequest, response.RESPONSE_CODE_INVALID_ARGUMENT, reason, nil)
+		// ---- Multiple Errors (MultiError) ----
+		case openapi3.MultiError:
+			data := []DataResponseError{}
+			reasons := []string{}
+			for _, e := range internalErr {
+				if reqErr, ok := e.(*openapi3filter.RequestError); ok {
+					reason := ""
+					if reqErr.Err != nil {
+						reason = reqErr.Err.Error()
+					}
+					field := ""
+					message := ""
+					var in *string
+					if reqErr.Parameter != nil {
+						reason = fmt.Sprintf("parameter %q in %s has an error: %s", reqErr.Parameter.Name, reqErr.Parameter.In, reason)
+						field = reqErr.Parameter.Name
+						in = &reqErr.Parameter.In
+						message = reason
+						reasons = append(reasons, reason)
+						data = append(data, DataResponseError{
+							Field:   field,
+							In:      in,
+							Message: message,
+						})
+					} else if reqErr.RequestBody != nil {
+						reason = fmt.Sprintf("request body has an error: %s", reason)
+						reasons = append(reasons, reason)
+						if reqErr.Err != nil {
+							if multiErr, ok := reqErr.Err.(openapi3.MultiError); ok {
+								for _, err := range multiErr {
+									if schemaErr, ok := err.(*openapi3.SchemaError); ok {
+										if len(schemaErr.JSONPointer()) > 0 {
+											field = strings.Join(schemaErr.JSONPointer(), "/")
+										}
+										message = schemaErr.Reason
+										if schemaErr.Origin != nil {
+											message = schemaErr.Origin.Error()
+										}
+									}
+									data = append(data, DataResponseError{
+										Field:   field,
+										In:      in,
+										Message: message,
+									})
+								}
+							}
+						}
+					}
+
+				} else if secErr, ok := e.(*openapi3filter.SecurityRequirementsError); ok {
+					for _, err := range secErr.Errors {
+						if authErr, ok := err.(AuthError); ok {
+							return response.NewResponseError(http.StatusUnauthorized, response.RESPONSE_CODE_UNAUTHORIZE, authErr.Message, nil)
+						}
+
+					}
+					return response.NewResponseError(http.StatusUnauthorized, response.RESPONSE_CODE_UNAUTHORIZE, secErr.Error(), nil)
+				}
+			}
+			return response.NewResponseError(http.StatusBadRequest, response.RESPONSE_CODE_INVALID_ARGUMENT, strings.Join(reasons, " | "), data)
+
 		}
 
 	}
-	return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	return response.NewResponseError(http.StatusBadRequest, response.RESPONSE_CODE_INVALID_ARGUMENT, err.Error(), nil)
+}
+
+type AuthError struct {
+	Message string
+}
+
+func (e AuthError) Error() string {
+	return e.Message
 }
 
 // GetJWSFromRequest extracts a JWS string from an Authorization: Bearer <jws> header
@@ -147,24 +231,24 @@ func Authenticate(
 ) error {
 	// Our security scheme is named BearerAuth, ensure this is the case
 	if input.SecuritySchemeName != "BearerAuth" {
-		return echo.NewHTTPError(http.StatusUnauthorized, fmt.Errorf("security scheme %s != 'BearerAuth'", input.SecuritySchemeName))
+		return AuthError{Message: fmt.Sprintf("security scheme %s != 'BearerAuth'", input.SecuritySchemeName)}
 	}
 
 	// Now, we need to get the JWS from the request, to match the request expectations
 	// against request contents.
 	jws, err := GetJWSFromRequest(input.RequestValidationInput.Request)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, fmt.Errorf("getting jws: %w", err))
+		return AuthError{Message: fmt.Sprintf("getting jws: %s", err)}
 	}
 
 	claims, err := ValidateToken(jws, jwks)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, fmt.Errorf("validating token: %w", err))
+		return AuthError{Message: fmt.Sprintf("validating token: %s", err)}
 	}
 
 	// Check if token is expired
 	if claims.ExpiresAt != nil && claims.ExpiresAt.Time.Before(time.Now()) {
-		return echo.NewHTTPError(http.StatusUnauthorized, errors.New("token is expired"))
+		return AuthError{Message: "token is expired"}
 	}
 
 	if len(input.Scopes) != 0 {
@@ -172,11 +256,11 @@ func Authenticate(
 			//NOTE: can change id to your own id
 			valid, err := permValidator.CheckPermission(ctx, claims.Username, input.Scopes)
 			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, fmt.Errorf("check permission: %w", err))
+				return AuthError{Message: fmt.Sprintf("check permission: %s", err)}
 			}
 
 			if !valid {
-				return echo.NewHTTPError(http.StatusUnauthorized, ErrrPermissionDenied)
+				return AuthError{Message: ErrrPermissionDenied.Error()}
 			}
 		}
 	}
