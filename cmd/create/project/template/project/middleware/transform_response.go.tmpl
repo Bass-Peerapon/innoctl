@@ -19,7 +19,7 @@ func (m *GoMiddleware) TransformResponse(next echo.HandlerFunc) echo.HandlerFunc
 					}
 					c.Error(ecErr)
 					return nil
-				} else if v.HttpStatus >= http.StatusNoContent {
+				} else if v.HttpStatus == http.StatusNoContent {
 					return c.NoContent(v.HttpStatus)
 				}
 				return c.JSON(v.HttpStatus, v)
