@@ -3,18 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
-	"net/http"
-	"os"
-	"os/signal"
-	"strings"
-	"time"
-	"log/slog"
-  	myMiddL "{{.ModuleName}}/middleware"
-	helperGRPC "{{.ModuleName}}/utils/grpc"
-	"{{.ModuleName}}/utils/helper"
 	"git.innovasive.co.th/backend/psql"
-  	_util_tracing "{{.ModuleName}}/utils/opentracing"
+	"github.com/MicahParks/keyfunc/v3"
 	"github.com/getsentry/sentry-go"
 	sentryecho "github.com/getsentry/sentry-go/echo"
 	"github.com/labstack/echo/v4"
@@ -22,7 +12,17 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/spf13/cast"
 	"google.golang.org/grpc"
-  	"github.com/MicahParks/keyfunc/v3"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"strings"
+	"time"
+	myMiddL "{{.ModuleName}}/middleware"
+	helperGRPC "{{.ModuleName}}/utils/grpc"
+	"{{.ModuleName}}/utils/helper"
+	_util_tracing "{{.ModuleName}}/utils/opentracing"
 )
 
 var (
@@ -38,8 +38,7 @@ var (
 	PSQL_DATABASE_URL       = helper.GetENV("PSQL_DATABASE_URL", "postgres://postgres:postgres@psql_db:5432/app_example?sslmode=disable")
 	SENTRY_DSN              = helper.GetENV("SENTRY_DSN", "")
 	JAEGER_SERVICE_NAME     = helper.GetENV("JAEGER_SERVICE_NAME", "")
-  	JWKS_URL            	= strings.Split(helper.GetENV("JWKS_URL", ""), ",")
-
+	JWKS_URL                = strings.Split(helper.GetENV("JWKS_URL", ""), ",")
 )
 
 func sqlDBWithTracing(con string, tracer opentracing.Tracer) *psql.Client {
@@ -56,7 +55,7 @@ func main() {
 		Dsn: SENTRY_DSN,
 	})
 	// /* init tracing*/
-  	tracer, closer := _util_tracing.Init("{{.ProjectName}}")
+	tracer, closer := _util_tracing.Init("{{.ProjectName}}")
 	defer closer.Close()
 	opentracing.SetGlobalTracer(tracer)
 
@@ -87,9 +86,27 @@ func main() {
 	e.GET("/", func(c echo.Context) error {
 		return c.String(http.StatusOK, "Hello, World!")
 	})
-  	e.GET("/health-check", func(c echo.Context) error {
+	e.GET("/health-check", func(c echo.Context) error {
+		// NOTE: add db health check like example below
+		// DBStat := psqlClient.GetClient().Stats()
+		// db := echo.Map{
+		// 	"postgres": echo.Map{
+		// 		"dbname": echo.Map{
+		// 			"open_connections":     DBStat.OpenConnections,
+		// 			"in_use":               DBStat.InUse,
+		// 			"idle":                 DBStat.Idle,
+		// 			"wait_count":           DBStat.WaitCount,
+		// 			"wait_duration":        DBStat.WaitDuration.String(),
+		// 			"max_open_connections": DBStat.MaxOpenConnections,
+		// 			"max_idle_closed":      DBStat.MaxIdleClosed,
+		// 			"max_idle_time_closed": DBStat.MaxIdleTimeClosed,
+		// 			"max_lifetime_closed":  DBStat.MaxLifetimeClosed,
+		// 		},
+		// 	},
+		// }
 		resp := echo.Map{
 			"status": "ok",
+			// "db":     db,
 		}
 		return c.JSON(http.StatusOK, resp)
 	})
@@ -104,12 +121,12 @@ func main() {
 		})
 	})
 
-  	jwks, err := keyfunc.NewDefault(JWKS_URL)
+	jwks, err := keyfunc.NewDefault(JWKS_URL)
 	if err != nil {
 		panic(err)
 	}
 
-  	mw, err := myMiddL.CreateOpenapiMiddleware(
+	mw, err := myMiddL.CreateOpenapiMiddleware(
 		jwks,
 		nil,
 	)
@@ -117,8 +134,6 @@ func main() {
 		panic(err)
 	}
 	e.Use(mw)
-
-
 
 	/* repository */
 

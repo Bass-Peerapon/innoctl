@@ -24,4 +24,14 @@ RUN  go build -o  /go/src/{{.ModuleName}}/tmp/app main.go
 EXPOSE 3000
 EXPOSE 3100
 
+# --------------------
+# Create real user
+# --------------------
+RUN useradd -u 1001 -m -s /bin/bash golang
+
+# Fix permission
+RUN chown -R golang:golang /go/src/{{.ModuleName}}
+
+USER golang
+
 ENTRYPOINT CompileDaemon -include=go.mod -log-prefix=false -color=true -build="go build -o ./tmp/app main.go" -command="./tmp/app" 
